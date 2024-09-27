@@ -1,5 +1,6 @@
 import { STORAGE_KEY } from "@/app/constant";
 import { SyncStore } from "@/app/store/sync";
+import { corsFetch } from "../cors";
 import { chunks } from "../format";
 
 export type UpstashConfig = SyncStore["upstash"];
@@ -17,9 +18,10 @@ export function createUpstashClient(store: SyncStore) {
   return {
     async check() {
       try {
-        const res = await fetch(this.path(`get/${storeKey}`, proxyUrl), {
+        const res = await corsFetch(this.path(`get/${storeKey}`), {
           method: "GET",
           headers: this.headers(),
+          proxyUrl,
         });
         console.log("[Upstash] check", res.status, res.statusText);
         return [200].includes(res.status);
@@ -30,9 +32,10 @@ export function createUpstashClient(store: SyncStore) {
     },
 
     async redisGet(key: string) {
-      const res = await fetch(this.path(`get/${key}`, proxyUrl), {
+      const res = await corsFetch(this.path(`get/${key}`), {
         method: "GET",
         headers: this.headers(),
+        proxyUrl,
       });
 
       console.log("[Upstash] get key = ", key, res.status, res.statusText);
@@ -42,10 +45,11 @@ export function createUpstashClient(store: SyncStore) {
     },
 
     async redisSet(key: string, value: string) {
-      const res = await fetch(this.path(`set/${key}`, proxyUrl), {
+      const res = await corsFetch(this.path(`set/${key}`), {
         method: "POST",
         headers: this.headers(),
         body: value,
+        proxyUrl,
       });
 
       console.log("[Upstash] set key = ", key, res.status, res.statusText);
@@ -80,31 +84,18 @@ export function createUpstashClient(store: SyncStore) {
         Authorization: `Bearer ${config.apiKey}`,
       };
     },
-    path(path: string, proxyUrl: string = "") {
-      if (!path.endsWith("/")) {
-        path += "/";
+    path(path: string) {
+      let url = config.endpoint;
+
+      if (!url.endsWith("/")) {
+        url += "/";
       }
+
       if (path.startsWith("/")) {
         path = path.slice(1);
       }
 
-      if (proxyUrl.length > 0 && !proxyUrl.endsWith("/")) {
-        proxyUrl += "/";
-      }
-
-      let url;
-      const pathPrefix = "/api/upstash/";
-
-      try {
-        let u = new URL(proxyUrl + pathPrefix + path);
-        // add query params
-        u.searchParams.append("endpoint", config.endpoint);
-        url = u.toString();
-      } catch (e) {
-        url = pathPrefix + path + "?endpoint=" + config.endpoint;
-      }
-
-      return url;
+      return url + path;
     },
   };
 }

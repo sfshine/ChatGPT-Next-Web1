@@ -9,7 +9,7 @@
   },
   "package": {
     "productName": "NextChat",
-    "version": "2.15.3"
+    "version": "2.10.2"
   },
   "tauri": {
     "allowlist": {
@@ -50,11 +50,6 @@
       },
       "notification": {
         "all": true
-      },
-      "http": {
-        "all": true,
-        "request": true,
-        "scope": ["https://*", "http://*"]
       }
     },
     "bundle": {
@@ -91,13 +86,12 @@
       }
     },
     "security": {
-      "csp": null,
-      "dangerousUseHttpScheme": true
+      "csp": null
     },
     "updater": {
       "active": true,
       "endpoints": [
-        "https://github.com/ChatGPTNextWeb/ChatGPT-Next-Web/releases/latest/download/latest.json"
+        "https://github.com/Yidadaa/ChatGPT-Next-Web/releases/latest/download/latest.json"
       ],
       "dialog": false,
       "windows": {

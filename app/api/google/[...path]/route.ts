@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "../../auth";
 import { getServerSideConfig } from "@/app/config/server";
-import { ModelProvider, STABILITY_BASE_URL } from "@/app/constant";
-import { auth } from "@/app/api/auth";
+import { GEMINI_BASE_URL, Google, ModelProvider } from "@/app/constant";
 
-export async function handle(
+async function handle(
   req: NextRequest,
   { params }: { params: { path: string[] } },
 ) {
-  console.log("[Stability] params ", params);
+  console.log("[Google Route] params ", params);
 
   if (req.method === "OPTIONS") {
     return NextResponse.json({ body: "OK" }, { status: 200 });
@@ -17,7 +17,7 @@ export async function handle(
 
   const serverConfig = getServerSideConfig();
 
-  let baseUrl = serverConfig.stabilityUrl || STABILITY_BASE_URL;
+  let baseUrl = serverConfig.googleUrl || GEMINI_BASE_URL;
 
   if (!baseUrl.startsWith("http")) {
     baseUrl = `https://${baseUrl}`;
@@ -27,10 +27,10 @@ export async function handle(
     baseUrl = baseUrl.slice(0, -1);
   }
 
-  let path = `${req.nextUrl.pathname}`.replaceAll("/api/stability/", "");
+  let path = `${req.nextUrl.pathname}`.replaceAll("/api/google/", "");
 
-  console.log("[Stability Proxy] ", path);
-  console.log("[Stability Base Url]", baseUrl);
+  console.log("[Proxy] ", path);
+  console.log("[Base Url]", baseUrl);
 
   const timeoutId = setTimeout(
     () => {
@@ -39,8 +39,7 @@ export async function handle(
     10 * 60 * 1000,
   );
 
-  const authResult = auth(req, ModelProvider.Stability);
-
+  const authResult = auth(req, ModelProvider.GeminiPro);
   if (authResult.error) {
     return NextResponse.json(authResult, {
       status: 401,
@@ -50,13 +49,13 @@ export async function handle(
   const bearToken = req.headers.get("Authorization") ?? "";
   const token = bearToken.trim().replaceAll("Bearer ", "").trim();
 
-  const key = token ? token : serverConfig.stabilityApiKey;
+  const key = token ? token : serverConfig.googleApiKey;
 
   if (!key) {
     return NextResponse.json(
       {
         error: true,
-        message: `missing STABILITY_API_KEY in server env vars`,
+        message: `missing GOOGLE_API_KEY in server env vars`,
       },
       {
         status: 401,
@@ -64,13 +63,11 @@ export async function handle(
     );
   }
 
-  const fetchUrl = `${baseUrl}/${path}`;
-  console.log("[Stability Url] ", fetchUrl);
+  const fetchUrl = `${baseUrl}/${path}?key=${key}`;
   const fetchOptions: RequestInit = {
     headers: {
-      "Content-Type": req.headers.get("Content-Type") || "multipart/form-data",
-      Accept: req.headers.get("Accept") || "application/json",
-      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json",
+      "Cache-Control": "no-store",
     },
     method: req.method,
     body: req.body,
@@ -88,6 +85,7 @@ export async function handle(
     newHeaders.delete("www-authenticate");
     // to disable nginx buffering
     newHeaders.set("X-Accel-Buffering", "no");
+
     return new Response(res.body, {
       status: res.status,
       statusText: res.statusText,
@@ -97,3 +95,22 @@ export async function handle(
     clearTimeout(timeoutId);
   }
 }
+
+export const GET = handle;
+export const POST = handle;
+
+export const runtime = "edge";
+export const preferredRegion = [
+  "bom1",
+  "cle1",
+  "cpt1",
+  "gru1",
+  "hnd1",
+  "iad1",
+  "icn1",
+  "kix1",
+  "pdx1",
+  "sfo1",
+  "sin1",
+  "syd1",
+];

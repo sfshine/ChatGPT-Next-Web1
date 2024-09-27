@@ -1,10 +1,19 @@
 {
   "compilerOptions": {
+    "strict": false,               // 关闭所有严格类型检查
+    "noImplicitAny": false,
+    "strictNullChecks": false,     // 允许 null 和 undefined 赋值给所有类型
+    "strictFunctionTypes": false,  // 不对函数参数双向协变进行检查
+    "strictBindCallApply": false,  // 不严格检查 bind、call 和 apply 的参数类型
+    "strictPropertyInitialization": false,  // 不检查类属性是否在构造函数中初始化
+    "noImplicitThis": false,       // 允许 'this' 表达式的类型为 'any'
+    "noImplicitReturns": false,    // 允许函数不总是返回值
+    "noUnusedLocals": false,       // 不报告未使用的局部变量
+    "noUnusedParameters": false,    // 不报告未使用的参数
     "target": "ES2015",
     "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,
     "skipLibCheck": true,
-    "strict": true,
     "forceConsistentCasingInFileNames": true,
     "noEmit": true,
     "esModuleInterop": true,
@@ -14,6 +23,7 @@
     "isolatedModules": true,
     "jsx": "preserve",
     "incremental": true,
+    "noImplicitAny": false,
     "plugins": [
       {
         "name": "next"

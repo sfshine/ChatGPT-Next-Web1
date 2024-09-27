@@ -12,14 +12,14 @@ export const ChatControllerPool = {
     return key;
   },
 
-  stop(sessionId: string, messageId: string) {
+  stop(sessionId: string, messageId: string | number) {
     const key = this.key(sessionId, messageId);
     const controller = this.controllers[key];
     controller?.abort();
   },
 
   stopAll() {
-    Object.values(this.controllers).forEach((v) => v.abort());
+    Object.values(this.controllers).forEach((v: AbortController) => v.abort());
   },
 
   hasPending() {

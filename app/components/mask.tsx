@@ -22,7 +22,7 @@ import {
   useAppConfig,
   useChatStore,
 } from "../store";
-import { MultimodalContent, ROLES } from "../client/api";
+import { ROLES } from "../client/api";
 import {
   Input,
   List,
@@ -37,24 +37,19 @@ import Locale, { AllLangs, ALL_LANG_OPTIONS, Lang } from "../locales";
 import { useNavigate } from "react-router-dom";
 
 import chatStyle from "./chat.module.scss";
-import { useState } from "react";
-import {
-  copyToClipboard,
-  downloadAs,
-  getMessageImages,
-  readFromFile,
-} from "../utils";
+import { useEffect, useState } from "react";
+import { copyToClipboard, downloadAs, readFromFile } from "../utils";
 import { Updater } from "../typing";
 import { ModelConfigList } from "./model-config";
 import { FileName, Path } from "../constant";
 import { BUILTIN_MASK_STORE } from "../masks";
+import { nanoid } from "nanoid";
 import {
   DragDropContext,
   Droppable,
   Draggable,
   OnDragEndResponder,
 } from "@hello-pangea/dnd";
-import { getMessageTextContent } from "../utils";
 
 // drag and drop helper function
 function reorder<T>(list: T[], startIndex: number, endIndex: number): T[] {
@@ -126,8 +121,6 @@ export function MaskConfig(props: {
             onClose={() => setShowPicker(false)}
           >
             <div
-              tabIndex={0}
-              aria-label={Locale.Mask.Config.Avatar}
               onClick={() => setShowPicker(true)}
               style={{ cursor: "pointer" }}
             >
@@ -140,7 +133,6 @@ export function MaskConfig(props: {
         </ListItem>
         <ListItem title={Locale.Mask.Config.Name}>
           <input
-            aria-label={Locale.Mask.Config.Name}
             type="text"
             value={props.mask.name}
             onInput={(e) =>
@@ -155,7 +147,6 @@ export function MaskConfig(props: {
           subTitle={Locale.Mask.Config.HideContext.SubTitle}
         >
           <input
-            aria-label={Locale.Mask.Config.HideContext.Title}
             type="checkbox"
             checked={props.mask.hideContext}
             onChange={(e) => {
@@ -166,31 +157,12 @@ export function MaskConfig(props: {
           ></input>
         </ListItem>
 
-        {globalConfig.enableArtifacts && (
-          <ListItem
-            title={Locale.Mask.Config.Artifacts.Title}
-            subTitle={Locale.Mask.Config.Artifacts.SubTitle}
-          >
-            <input
-              aria-label={Locale.Mask.Config.Artifacts.Title}
-              type="checkbox"
-              checked={props.mask.enableArtifacts !== false}
-              onChange={(e) => {
-                props.updateMask((mask) => {
-                  mask.enableArtifacts = e.currentTarget.checked;
-                });
-              }}
-            ></input>
-          </ListItem>
-        )}
-
         {!props.shouldSyncFromGlobal ? (
           <ListItem
             title={Locale.Mask.Config.Share.Title}
             subTitle={Locale.Mask.Config.Share.SubTitle}
           >
             <IconButton
-              aria={Locale.Mask.Config.Share.Title}
               icon={<CopyIcon />}
               text={Locale.Mask.Config.Share.Action}
               onClick={copyMaskLink}
@@ -204,7 +176,6 @@ export function MaskConfig(props: {
             subTitle={Locale.Mask.Config.Sync.SubTitle}
           >
             <input
-              aria-label={Locale.Mask.Config.Sync.Title}
               type="checkbox"
               checked={props.mask.syncGlobalConfig}
               onChange={async (e) => {
@@ -273,7 +244,7 @@ function ContextPromptItem(props: {
         </>
       )}
       <Input
-        value={getMessageTextContent(props.prompt)}
+        value={props.prompt.content}
         type="text"
         className={chatStyle["context-content"]}
         rows={focusingInput ? 5 : 1}
@@ -318,18 +289,7 @@ export function ContextPrompts(props: {
   };
 
   const updateContextPrompt = (i: number, prompt: ChatMessage) => {
-    props.updateContext((context) => {
-      const images = getMessageImages(context[i]);
-      context[i] = prompt;
-      if (images.length > 0) {
-        const text = getMessageTextContent(context[i]);
-        const newContext: MultimodalContent[] = [{ type: "text", text }];
-        for (const img of images) {
-          newContext.push({ type: "image_url", image_url: { url: img } });
-        }
-        context[i].content = newContext;
-      }
-    });
+    props.updateContext((context) => (context[i] = prompt));
   };
 
   const onDragEnd: OnDragEndResponder = (result) => {
@@ -427,7 +387,7 @@ export function MaskPage() {
   const maskStore = useMaskStore();
   const chatStore = useChatStore();
 
-  const filterLang = maskStore.language;
+  const [filterLang, setFilterLang] = useState<Lang>();
 
   const allMasks = maskStore
     .getAll()
@@ -534,9 +494,9 @@ export function MaskPage() {
               onChange={(e) => {
                 const value = e.currentTarget.value;
                 if (value === Locale.Settings.Lang.All) {
-                  maskStore.setLanguage(undefined);
+                  setFilterLang(undefined);
                 } else {
-                  maskStore.setLanguage(value as Lang);
+                  setFilterLang(value as Lang);
                 }
               }}
             >

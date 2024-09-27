@@ -1,5 +1,6 @@
 import { getClientConfig } from "../config/client";
-import { ApiPath, STORAGE_KEY, StoreKey } from "../constant";
+import { Updater } from "../typing";
+import {ApiPath, DEFAULT_MODELS, STORAGE_KEY, StoreKey} from "../constant";
 import { createPersistStore } from "../utils/store";
 import {
   AppState,
@@ -13,6 +14,7 @@ import { showToast } from "../components/ui-lib";
 import Locale from "../locales";
 import { createSyncClient, ProviderType } from "../utils/cloud";
 import { corsPath } from "../utils/cors";
+import moment from 'moment';
 
 export interface WebDavConfig {
   server: string;
@@ -42,11 +44,19 @@ const DEFAULT_SYNC_STATE = {
 
   lastSyncTime: 0,
   lastProvider: "",
+  monthStr :"",
 };
 
 export const useSyncStore = createPersistStore(
   DEFAULT_SYNC_STATE,
   (set, get) => ({
+    setMonthStr(monthStr: string) {
+        set({ monthStr: monthStr });
+    },
+    getFileName() {
+      const monthStr = get().monthStr || `${moment().format("YYYYMM")}`
+      return `${STORAGE_KEY}/backup_${monthStr}.json`;
+    },
     cloudSync() {
       const config = get()[get().provider];
       return Object.values(config).every((c) => c.toString().length > 0);
@@ -88,34 +98,32 @@ export const useSyncStore = createPersistStore(
       const client = createSyncClient(provider, get());
       return client;
     },
-
-    async sync() {
+    /**
+     * @param force 0 merge, 1 清空云端 2 清空本地
+     */
+    async sync(force?: number) {
       const localState = getLocalAppState();
+      if (force == 2) {
+        (localState["chat-next-web-store"] as any)["sessions"] = [];
+        (localState["mask-store"] as any)["masks"] = [];
+        (localState["app-config"] as any) = { ...(localState["app-config"]), lastUpdateTime: Infinity };
+      }
       const provider = get().provider;
       const config = get()[provider];
       const client = this.getClient();
 
       try {
-        const remoteState = await client.get(config.username);
-        if (!remoteState || remoteState === "") {
-          await client.set(config.username, JSON.stringify(localState));
-          console.log(
-            "[Sync] Remote state is empty, using local state instead.",
-          );
-          return;
-        } else {
-          const parsedRemoteState = JSON.parse(
-            await client.get(config.username),
-          ) as AppState;
-          mergeAppState(localState, parsedRemoteState);
-          setLocalAppState(localState);
-        }
+        const remoteState = (force == 1 ? {} : JSON.parse(
+          await client.get(this.getFileName()),
+        )) as AppState;
+        mergeAppState(localState, remoteState);
+        (localState["app-config"] as any) = { ...(localState["app-config"]), models: DEFAULT_MODELS };
+        setLocalAppState(localState);
+        console.log("localState", localState)
       } catch (e) {
         console.log("[Sync] failed to get remote state", e);
-        throw e;
       }
-
-      await client.set(config.username, JSON.stringify(localState));
+      await client.set(this.getFileName(), JSON.stringify(localState));
 
       this.markSyncTime();
     },
@@ -127,22 +135,13 @@ export const useSyncStore = createPersistStore(
   }),
   {
     name: StoreKey.Sync,
-    version: 1.2,
+    version: 1.1,
 
     migrate(persistedState, version) {
       const newState = persistedState as typeof DEFAULT_SYNC_STATE;
 
       if (version < 1.1) {
         newState.upstash.username = STORAGE_KEY;
-      }
-
-      if (version < 1.2) {
-        if (
-          (persistedState as typeof DEFAULT_SYNC_STATE).proxyUrl ===
-          "/api/cors/"
-        ) {
-          newState.proxyUrl = "";
-        }
       }
 
       return newState as any;

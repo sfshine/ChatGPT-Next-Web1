@@ -38,20 +38,16 @@ interface ChatCommands {
   next?: Command;
   prev?: Command;
   clear?: Command;
-  fork?: Command;
   del?: Command;
 }
 
-// Compatible with Chinese colon character "："
-export const ChatCommandPrefix = /^[:：]/;
+export const ChatCommandPrefix = ":";
 
 export function useChatCommand(commands: ChatCommands = {}) {
   function extract(userInput: string) {
-    const match = userInput.match(ChatCommandPrefix);
-    if (match) {
-      return userInput.slice(1) as keyof ChatCommands;
-    }
-    return userInput as keyof ChatCommands;
+    return (
+      userInput.startsWith(ChatCommandPrefix) ? userInput.slice(1) : userInput
+    ) as keyof ChatCommands;
   }
 
   function search(userInput: string) {
@@ -61,7 +57,7 @@ export function useChatCommand(commands: ChatCommands = {}) {
       .filter((c) => c.startsWith(input))
       .map((c) => ({
         title: desc[c as keyof ChatCommands],
-        content: ":" + c,
+        content: ChatCommandPrefix + c,
       }));
   }
 

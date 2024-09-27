@@ -1,8 +1,7 @@
 import { create } from "zustand";
-import { combine, persist, createJSONStorage } from "zustand/middleware";
+import { combine, persist } from "zustand/middleware";
 import { Updater } from "../typing";
 import { deepClone } from "./clone";
-import { indexedDBStorage } from "@/app/utils/indexedDB-storage";
 
 type SecondParam<T> = T extends (
   _f: infer _F,
@@ -14,11 +13,9 @@ type SecondParam<T> = T extends (
 
 type MakeUpdater<T> = {
   lastUpdateTime: number;
-  _hasHydrated: boolean;
 
   markUpdate: () => void;
   update: Updater<T>;
-  setHasHydrated: (state: boolean) => void;
 };
 
 type SetStoreState<T> = (
@@ -34,20 +31,12 @@ export function createPersistStore<T extends object, M>(
   ) => M,
   persistOptions: SecondParam<typeof persist<T & M & MakeUpdater<T>>>,
 ) {
-  persistOptions.storage = createJSONStorage(() => indexedDBStorage);
-  const oldOonRehydrateStorage = persistOptions?.onRehydrateStorage;
-  persistOptions.onRehydrateStorage = (state) => {
-    oldOonRehydrateStorage?.(state);
-    return () => state.setHasHydrated(true);
-  };
-
   return create(
     persist(
       combine(
         {
           ...state,
           lastUpdateTime: 0,
-          _hasHydrated: false,
         },
         (set, get) => {
           return {
@@ -65,9 +54,6 @@ export function createPersistStore<T extends object, M>(
                 ...state,
                 lastUpdateTime: Date.now(),
               });
-            },
-            setHasHydrated: (state: boolean) => {
-              set({ _hasHydrated: state } as Partial<T & M & MakeUpdater<T>>);
             },
           } as M & MakeUpdater<T>;
         },

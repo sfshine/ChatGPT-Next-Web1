@@ -1,43 +1,24 @@
-import { getMessageTextContent, trimTopic } from "../utils";
+import { trimTopic } from "../utils";
 
-import { indexedDBStorage } from "@/app/utils/indexedDB-storage";
-import { nanoid } from "nanoid";
-import type {
-  ClientApi,
-  MultimodalContent,
-  RequestMessage,
-} from "../client/api";
-import { getClientApi } from "../client/api";
-import { ChatControllerPool } from "../client/controller";
+import Locale, { getLang } from "../locales";
 import { showToast } from "../components/ui-lib";
+import { ModelConfig, ModelType, useAppConfig } from "./config";
+import { createEmptyMask, Mask } from "./mask";
 import {
   DEFAULT_INPUT_TEMPLATE,
   DEFAULT_MODELS,
   DEFAULT_SYSTEM_TEMPLATE,
   KnowledgeCutOffDate,
+  ModelProvider,
   StoreKey,
+  SUMMARIZE_MODEL,
 } from "../constant";
-import Locale, { getLang } from "../locales";
-import { isDalle3, safeLocalStorage } from "../utils";
+import { ClientApi, RequestMessage } from "../client/api";
+import { ChatControllerPool } from "../client/controller";
 import { prettyObject } from "../utils/format";
-import { createPersistStore } from "../utils/store";
 import { estimateTokenLength } from "../utils/token";
-import { ModelConfig, ModelType, useAppConfig } from "./config";
-import { createEmptyMask, Mask } from "./mask";
-
-const localStorage = safeLocalStorage();
-
-export type ChatMessageTool = {
-  id: string;
-  index?: number;
-  type?: string;
-  function?: {
-    name: string;
-    arguments?: string;
-  };
-  content?: string;
-  isError?: boolean;
-};
+import { nanoid } from "nanoid";
+import { createPersistStore } from "../utils/store";
 
 export type ChatMessage = RequestMessage & {
   date: string;
@@ -45,7 +26,6 @@ export type ChatMessage = RequestMessage & {
   isError?: boolean;
   id: string;
   model?: ModelType;
-  tools?: ChatMessageTool[];
 };
 
 export function createMessage(override: Partial<ChatMessage>): ChatMessage {
@@ -102,42 +82,35 @@ function createEmptySession(): ChatSession {
   };
 }
 
+function getSummarizeModel(currentModel: string) {
+  // if it is using gpt-* models, force to use 3.5 to summarize
+  return currentModel.startsWith("gpt") ? SUMMARIZE_MODEL : currentModel;
+}
+
 function countMessages(msgs: ChatMessage[]) {
-  return msgs.reduce(
-    (pre, cur) => pre + estimateTokenLength(getMessageTextContent(cur)),
-    0,
-  );
+  return msgs.reduce((pre, cur) => pre + estimateTokenLength(cur.content), 0);
 }
 
 function fillTemplateWith(input: string, modelConfig: ModelConfig) {
-  const cutoff =
-    KnowledgeCutOffDate[modelConfig.model] ?? KnowledgeCutOffDate.default;
+  const cutoff = KnowledgeCutOffDate[modelConfig.model] ?? KnowledgeCutOffDate.default;
   // Find the model in the DEFAULT_MODELS array that matches the modelConfig.model
-  const modelInfo = DEFAULT_MODELS.find((m) => m.name === modelConfig.model);
-
-  var serviceProvider = "OpenAI";
-  if (modelInfo) {
-    // TODO: auto detect the providerName from the modelConfig.model
-
-    // Directly use the providerName from the modelInfo
-    serviceProvider = modelInfo.provider.providerName;
+  const modelInfo = DEFAULT_MODELS.find(m => m.name === modelConfig.model);
+  if (!modelInfo) {
+    throw new Error(`Model ${modelConfig.model} not found in DEFAULT_MODELS array.`);
   }
+  // Directly use the providerName from the modelInfo
+  const serviceProvider = modelInfo.provider.providerName;
 
   const vars = {
     ServiceProvider: serviceProvider,
     cutoff,
     model: modelConfig.model,
-    time: new Date().toString(),
+    time: new Date().toLocaleString(),
     lang: getLang(),
     input: input,
   };
 
   let output = modelConfig.template ?? DEFAULT_INPUT_TEMPLATE;
-
-  // remove duplicate
-  if (input.startsWith(output)) {
-    output = "";
-  }
 
   // must contains {{input}}
   const inputVar = "{{input}}";
@@ -146,7 +119,7 @@ function fillTemplateWith(input: string, modelConfig: ModelConfig) {
   }
 
   Object.entries(vars).forEach(([name, value]) => {
-    const regex = new RegExp(`{{${name}}}`, "g");
+    const regex = new RegExp(`{{${name}}}`, 'g');
     output = output.replace(regex, value.toString()); // Ensure value is a string
   });
 
@@ -156,7 +129,6 @@ function fillTemplateWith(input: string, modelConfig: ModelConfig) {
 const DEFAULT_CHAT_STATE = {
   sessions: [createEmptySession()],
   currentSessionIndex: 0,
-  lastInput: "",
 };
 
 export const useChatStore = createPersistStore(
@@ -170,28 +142,6 @@ export const useChatStore = createPersistStore(
     }
 
     const methods = {
-      forkSession() {
-        // 获取当前会话
-        const currentSession = get().currentSession();
-        if (!currentSession) return;
-
-        const newSession = createEmptySession();
-
-        newSession.topic = currentSession.topic;
-        newSession.messages = [...currentSession.messages];
-        newSession.mask = {
-          ...currentSession.mask,
-          modelConfig: {
-            ...currentSession.mask.modelConfig,
-          },
-        };
-
-        set((state) => ({
-          currentSessionIndex: 0,
-          sessions: [newSession, ...state.sessions],
-        }));
-      },
-
       clearSessions() {
         set(() => ({
           sessions: [createEmptySession()],
@@ -229,7 +179,13 @@ export const useChatStore = createPersistStore(
           };
         });
       },
-
+      formatDate(timestamp: number) {
+        const date = new Date(timestamp);
+        const year = date.getFullYear();
+        const month = (date.getMonth() + 1).toString().padStart(2, "0");
+        const day = date.getDate().toString().padStart(2, "0");
+        return `${year}${month}${day}`;
+      },
       newSession(mask?: Mask) {
         const session = createEmptySession();
 
@@ -246,7 +202,12 @@ export const useChatStore = createPersistStore(
           };
           session.topic = mask.name;
         }
-
+        if (session.topic == "时间记录与管理") {
+          session.topic = this.formatDate(session.lastUpdate) + session.topic;
+        }
+        // if (session.topic == "新的聊天"){
+        //   session.topic = "#" + session.topic;
+        // }
         set((state) => ({
           currentSessionIndex: 0,
           sessions: [session].concat(state.sessions),
@@ -326,36 +287,16 @@ export const useChatStore = createPersistStore(
         get().summarizeSession();
       },
 
-      async onUserInput(content: string, attachImages?: string[]) {
+      async onUserInput(content: string) {
         const session = get().currentSession();
         const modelConfig = session.mask.modelConfig;
 
         const userContent = fillTemplateWith(content, modelConfig);
         console.log("[User Input] after template: ", userContent);
 
-        let mContent: string | MultimodalContent[] = userContent;
-
-        if (attachImages && attachImages.length > 0) {
-          mContent = [
-            {
-              type: "text",
-              text: userContent,
-            },
-          ];
-          mContent = mContent.concat(
-            attachImages.map((url) => {
-              return {
-                type: "image_url",
-                image_url: {
-                  url: url,
-                },
-              };
-            }),
-          );
-        }
-        let userMessage: ChatMessage = createMessage({
+        const userMessage: ChatMessage = createMessage({
           role: "user",
-          content: mContent,
+          content: userContent,
         });
 
         const botMessage: ChatMessage = createMessage({
@@ -373,7 +314,7 @@ export const useChatStore = createPersistStore(
         get().updateCurrentSession((session) => {
           const savedUserMessage = {
             ...userMessage,
-            content: mContent,
+            content,
           };
           session.messages = session.messages.concat([
             savedUserMessage,
@@ -381,7 +322,13 @@ export const useChatStore = createPersistStore(
           ]);
         });
 
-        const api: ClientApi = getClientApi(modelConfig.providerName);
+        var api: ClientApi;
+        if (modelConfig.model === "gemini-pro") {
+          api = new ClientApi(ModelProvider.GeminiPro);
+        } else {
+          api = new ClientApi(ModelProvider.GPT);
+        }
+
         // make request
         api.llm.chat({
           messages: sendMessages,
@@ -403,24 +350,8 @@ export const useChatStore = createPersistStore(
             }
             ChatControllerPool.remove(session.id, botMessage.id);
           },
-          onBeforeTool(tool: ChatMessageTool) {
-            (botMessage.tools = botMessage?.tools || []).push(tool);
-            get().updateCurrentSession((session) => {
-              session.messages = session.messages.concat();
-            });
-          },
-          onAfterTool(tool: ChatMessageTool) {
-            botMessage?.tools?.forEach((t, i, tools) => {
-              if (tool.id == t.id) {
-                tools[i] = { ...tool };
-              }
-            });
-            get().updateCurrentSession((session) => {
-              session.messages = session.messages.concat();
-            });
-          },
           onError(error) {
-            const isAborted = error.message?.includes?.("aborted");
+            const isAborted = error.message.includes("aborted");
             botMessage.content +=
               "\n\n" +
               prettyObject({
@@ -454,13 +385,14 @@ export const useChatStore = createPersistStore(
       getMemoryPrompt() {
         const session = get().currentSession();
 
-        if (session.memoryPrompt.length) {
-          return {
-            role: "system",
-            content: Locale.Store.Prompt.History(session.memoryPrompt),
-            date: "",
-          } as ChatMessage;
-        }
+        return {
+          role: "system",
+          content:
+            session.memoryPrompt.length > 0
+              ? Locale.Store.Prompt.History(session.memoryPrompt)
+              : "",
+          date: "",
+        } as ChatMessage;
       },
 
       getMessagesWithMemory() {
@@ -476,8 +408,7 @@ export const useChatStore = createPersistStore(
         // system prompts, to get close to OpenAI Web ChatGPT
         const shouldInjectSystemPrompts =
           modelConfig.enableInjectSystemPrompts &&
-          (session.mask.modelConfig.model.startsWith("gpt-") ||
-            session.mask.modelConfig.model.startsWith("chatgpt-"));
+          session.mask.modelConfig.model.startsWith("gpt-");
 
         var systemPrompts: ChatMessage[] = [];
         systemPrompts = shouldInjectSystemPrompts
@@ -497,15 +428,16 @@ export const useChatStore = createPersistStore(
             systemPrompts.at(0)?.content ?? "empty",
           );
         }
-        const memoryPrompt = get().getMemoryPrompt();
+
         // long term memory
         const shouldSendLongTermMemory =
           modelConfig.sendMemory &&
           session.memoryPrompt &&
           session.memoryPrompt.length > 0 &&
           session.lastSummarizeIndex > clearContextIndex;
-        const longTermMemoryPrompts =
-          shouldSendLongTermMemory && memoryPrompt ? [memoryPrompt] : [];
+        const longTermMemoryPrompts = shouldSendLongTermMemory
+          ? [get().getMemoryPrompt()]
+          : [];
         const longTermMemoryStartIndex = session.lastSummarizeIndex;
 
         // short term memory
@@ -536,9 +468,10 @@ export const useChatStore = createPersistStore(
         ) {
           const msg = messages[i];
           if (!msg || msg.isError) continue;
-          tokenCount += estimateTokenLength(getMessageTextContent(msg));
+          tokenCount += estimateTokenLength(msg.content);
           reversedRecentMessages.push(msg);
         }
+
         // concat all messages
         const recentMessages = [
           ...systemPrompts,
@@ -569,17 +502,17 @@ export const useChatStore = createPersistStore(
         });
       },
 
-      summarizeSession(refreshTitle: boolean = false) {
+      summarizeSession() {
         const config = useAppConfig.getState();
         const session = get().currentSession();
         const modelConfig = session.mask.modelConfig;
-        // skip summarize when using dalle3?
-        if (isDalle3(modelConfig.model)) {
-          return;
-        }
 
-        const providerName = modelConfig.compressProviderName;
-        const api: ClientApi = getClientApi(providerName);
+        var api: ClientApi;
+        if (modelConfig.model === "gemini-pro") {
+          api = new ClientApi(ModelProvider.GeminiPro);
+        } else {
+          api = new ClientApi(ModelProvider.GPT);
+        }
 
         // remove error messages if any
         const messages = session.messages;
@@ -587,35 +520,22 @@ export const useChatStore = createPersistStore(
         // should summarize topic after chating more than 50 words
         const SUMMARIZE_MIN_LEN = 50;
         if (
-          (config.enableAutoGenerateTitle &&
-            session.topic === DEFAULT_TOPIC &&
-            countMessages(messages) >= SUMMARIZE_MIN_LEN) ||
-          refreshTitle
+          config.enableAutoGenerateTitle &&
+          session.topic === DEFAULT_TOPIC &&
+          countMessages(messages) >= SUMMARIZE_MIN_LEN
         ) {
-          const startIndex = Math.max(
-            0,
-            messages.length - modelConfig.historyMessageCount,
+          const topicMessages = messages.concat(
+            createMessage({
+              role: "user",
+              content: Locale.Store.Prompt.Topic,
+            }),
           );
-          const topicMessages = messages
-            .slice(
-              startIndex < messages.length ? startIndex : messages.length - 1,
-              messages.length,
-            )
-            .concat(
-              createMessage({
-                role: "user",
-                content: Locale.Store.Prompt.Topic,
-              }),
-            );
           api.llm.chat({
             messages: topicMessages,
             config: {
-              model: modelConfig.compressModel,
-              stream: false,
-              providerName,
+              model: getSummarizeModel(session.mask.modelConfig.model),
             },
             onFinish(message) {
-              if (!isValidMessage(message)) return;
               get().updateCurrentSession(
                 (session) =>
                   (session.topic =
@@ -640,11 +560,9 @@ export const useChatStore = createPersistStore(
             Math.max(0, n - modelConfig.historyMessageCount),
           );
         }
-        const memoryPrompt = get().getMemoryPrompt();
-        if (memoryPrompt) {
-          // add memory prompt
-          toBeSummarizedMsgs.unshift(memoryPrompt);
-        }
+
+        // add memory prompt
+        toBeSummarizedMsgs.unshift(get().getMemoryPrompt());
 
         const lastSummarizeIndex = session.messages.length;
 
@@ -659,10 +577,6 @@ export const useChatStore = createPersistStore(
           historyMsgLength > modelConfig.compressMessageLengthThreshold &&
           modelConfig.sendMemory
         ) {
-          /** Destruct max_tokens while summarizing
-           * this param is just shit
-           **/
-          const { max_tokens, ...modelcfg } = modelConfig;
           api.llm.chat({
             messages: toBeSummarizedMsgs.concat(
               createMessage({
@@ -672,9 +586,9 @@ export const useChatStore = createPersistStore(
               }),
             ),
             config: {
-              ...modelcfg,
+              ...modelConfig,
               stream: true,
-              model: modelConfig.compressModel,
+              model: getSummarizeModel(session.mask.modelConfig.model),
             },
             onUpdate(message) {
               session.memoryPrompt = message;
@@ -690,10 +604,6 @@ export const useChatStore = createPersistStore(
               console.error("[Summarize] ", err);
             },
           });
-        }
-
-        function isValidMessage(message: any): boolean {
-          return typeof message === "string" && !message.startsWith("```json");
         }
       },
 
@@ -711,15 +621,9 @@ export const useChatStore = createPersistStore(
         set(() => ({ sessions }));
       },
 
-      async clearAllData() {
-        await indexedDBStorage.clear();
+      clearAllData() {
         localStorage.clear();
         location.reload();
-      },
-      setLastInput(lastInput: string) {
-        set({
-          lastInput,
-        });
       },
     };
 
@@ -727,7 +631,7 @@ export const useChatStore = createPersistStore(
   },
   {
     name: StoreKey.Chat,
-    version: 3.2,
+    version: 3.1,
     migrate(persistedState, version) {
       const state = persistedState as any;
       const newState = JSON.parse(
@@ -771,16 +675,6 @@ export const useChatStore = createPersistStore(
             s.mask.modelConfig.enableInjectSystemPrompts =
               config.modelConfig.enableInjectSystemPrompts;
           }
-        });
-      }
-
-      // add default summarize model for every session
-      if (version < 3.2) {
-        newState.sessions.forEach((s) => {
-          const config = useAppConfig.getState();
-          s.mask.modelConfig.compressModel = config.modelConfig.compressModel;
-          s.mask.modelConfig.compressProviderName =
-            config.modelConfig.compressProviderName;
         });
       }
 

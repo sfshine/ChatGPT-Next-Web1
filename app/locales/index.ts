@@ -18,12 +18,9 @@ import ar from "./ar";
 import bn from "./bn";
 import sk from "./sk";
 import { merge } from "../utils/merge";
-import { safeLocalStorage } from "@/app/utils";
 
 import type { LocaleType } from "./cn";
 export type { LocaleType, PartialLocaleType } from "./cn";
-
-const localStorage = safeLocalStorage();
 
 const ALL_LANGS = {
   cn,
@@ -85,26 +82,22 @@ merge(fallbackLang, targetLang);
 export default fallbackLang as LocaleType;
 
 function getItem(key: string) {
-  return localStorage.getItem(key);
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
 }
 
 function setItem(key: string, value: string) {
-  localStorage.setItem(key, value);
+  try {
+    localStorage.setItem(key, value);
+  } catch {}
 }
 
 function getLanguage() {
   try {
-    const locale = new Intl.Locale(navigator.language).maximize();
-    const region = locale?.region?.toLowerCase();
-    // 1. check region code in ALL_LANGS
-    if (AllLangs.includes(region as Lang)) {
-      return region as Lang;
-    }
-    // 2. check language code in ALL_LANGS
-    if (AllLangs.includes(locale.language as Lang)) {
-      return locale.language as Lang;
-    }
-    return DEFAULT_LANG;
+    return navigator.language.toLowerCase();
   } catch {
     return DEFAULT_LANG;
   }
@@ -117,7 +110,15 @@ export function getLang(): Lang {
     return savedLang as Lang;
   }
 
-  return getLanguage();
+  const lang = getLanguage();
+
+  for (const option of AllLangs) {
+    if (lang.includes(option)) {
+      return option;
+    }
+  }
+
+  return DEFAULT_LANG;
 }
 
 export function changeLang(lang: Lang) {
@@ -133,35 +134,4 @@ export function getISOLang() {
 
   const lang = getLang();
   return isoLangString[lang] ?? lang;
-}
-
-const DEFAULT_STT_LANG = "zh-CN";
-export const STT_LANG_MAP: Record<Lang, string> = {
-  cn: "zh-CN",
-  en: "en-US",
-  pt: "pt-BR",
-  tw: "zh-TW",
-  jp: "ja-JP",
-  ko: "ko-KR",
-  id: "id-ID",
-  fr: "fr-FR",
-  es: "es-ES",
-  it: "it-IT",
-  tr: "tr-TR",
-  de: "de-DE",
-  vi: "vi-VN",
-  ru: "ru-RU",
-  cs: "cs-CZ",
-  no: "no-NO",
-  ar: "ar-SA",
-  bn: "bn-BD",
-  sk: "sk-SK",
-};
-
-export function getSTTLang(): string {
-  try {
-    return STT_LANG_MAP[getLang()];
-  } catch {
-    return DEFAULT_STT_LANG;
-  }
 }

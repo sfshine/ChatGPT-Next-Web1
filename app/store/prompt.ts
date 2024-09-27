@@ -1,7 +1,7 @@
 import Fuse from "fuse.js";
-import { nanoid } from "nanoid";
-import { StoreKey } from "../constant";
 import { getLang } from "../locales";
+import { StoreKey } from "../constant";
+import { nanoid } from "nanoid";
 import { createPersistStore } from "../utils/store";
 
 export interface Prompt {
@@ -147,11 +147,6 @@ export const usePromptStore = createPersistStore(
     },
 
     onRehydrateStorage(state) {
-      // Skip store rehydration on server side
-      if (typeof window === "undefined") {
-        return;
-      }
-      
       const PROMPT_URL = "./prompts.json";
 
       type PromptList = Array<[string, string]>;
@@ -159,7 +154,7 @@ export const usePromptStore = createPersistStore(
       fetch(PROMPT_URL)
         .then((res) => res.json())
         .then((res) => {
-          let fetchPrompts = [res.en, res.tw, res.cn];
+          let fetchPrompts = [res.en, res.cn];
           if (getLang() === "cn") {
             fetchPrompts = fetchPrompts.reverse();
           }
@@ -180,8 +175,7 @@ export const usePromptStore = createPersistStore(
           const allPromptsForSearch = builtinPrompts
             .reduce((pre, cur) => pre.concat(cur), [])
             .filter((v) => !!v.title && !!v.content);
-          SearchService.count.builtin =
-            res.en.length + res.cn.length + res.tw.length;
+          SearchService.count.builtin = res.en.length + res.cn.length;
           SearchService.init(allPromptsForSearch, userPrompts);
         });
     },
