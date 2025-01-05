@@ -88,8 +88,13 @@ export const useSyncStore = createPersistStore(
       return client;
     },
 
-    async sync() {
+    async sync(force?: number) {
       const localState = getLocalAppState();
+      if (force == 2) {
+        (localState["chat-next-web-store"] as any)["sessions"] = [];
+        (localState["mask-store"] as any)["masks"] = [];
+        (localState["app-config"] as any) = { ...(localState["app-config"]), lastUpdateTime: Infinity };
+      }
       const provider = get().provider;
       const config = get()[provider];
       const client = this.getClient();
