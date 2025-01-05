@@ -537,19 +537,6 @@ function SyncItems() {
               <div style={{ display: "flex" }}>
                 <IconButton
                   icon={<ResetIcon />}
-                  text={Locale.UI.Sync}
-                  onClick={async () => {
-                    try {
-                      await syncStore.sync(0);
-                      showToast(Locale.Settings.Sync.Success);
-                    } catch (e) {
-                      showToast(Locale.Settings.Sync.Fail);
-                      console.error("[Sync]", e);
-                    }
-                  }}
-                />
-                <IconButton
-                  icon={<ResetIcon />}
                   text={Locale.UI.SyncForce1}
                   onClick={async () => {
                     try {
@@ -567,6 +554,19 @@ function SyncItems() {
                   onClick={async () => {
                     try {
                       await syncStore.sync(2);
+                      showToast(Locale.Settings.Sync.Success);
+                    } catch (e) {
+                      showToast(Locale.Settings.Sync.Fail);
+                      console.error("[Sync]", e);
+                    }
+                  }}
+                />
+                <IconButton
+                  icon={<ResetIcon />}
+                  text={Locale.UI.Sync}
+                  onClick={async () => {
+                    try {
+                      await syncStore.sync(0);
                       showToast(Locale.Settings.Sync.Success);
                     } catch (e) {
                       showToast(Locale.Settings.Sync.Fail);
