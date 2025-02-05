@@ -1,5 +1,5 @@
 import { getClientConfig } from "../config/client";
-import { ApiPath, STORAGE_KEY, StoreKey } from "../constant";
+import { ApiPath, STORAGE_KEY, StoreKey, DEFAULT_MODELS } from "../constant";
 import { createPersistStore } from "../utils/store";
 import {
   AppState,
@@ -88,34 +88,35 @@ export const useSyncStore = createPersistStore(
       return client;
     },
 
-    async sync() {
+    async sync(force?: number) {
       const localState = getLocalAppState();
+      if (force == 2) {
+        (localState["chat-next-web-store"] as any)["sessions"] = [];
+        (localState["mask-store"] as any)["masks"] = [];
+        (localState["app-config"] as any) = {
+          ...localState["app-config"],
+          lastUpdateTime: Infinity,
+        };
+      }
       const provider = get().provider;
       const config = get()[provider];
       const client = this.getClient();
-
       try {
-        const remoteState = await client.get(config.username);
-        if (!remoteState || remoteState === "") {
-          await client.set(config.username, JSON.stringify(localState));
-          console.log(
-            "[Sync] Remote state is empty, using local state instead.",
-          );
-          return;
-        } else {
-          const parsedRemoteState = JSON.parse(
-            await client.get(config.username),
-          ) as AppState;
-          mergeAppState(localState, parsedRemoteState);
-          setLocalAppState(localState);
-        }
+        const remoteState = (
+          force == 1 ? {} : JSON.parse(await client.get(config.username))
+        ) as AppState;
+        mergeAppState(localState, remoteState);
+        (localState["app-config"] as any) = {
+          ...localState["app-config"],
+          models: DEFAULT_MODELS,
+        };
+        setLocalAppState(localState);
+        console.log("localState", localState);
       } catch (e) {
         console.log("[Sync] failed to get remote state", e);
-        throw e;
       }
 
       await client.set(config.username, JSON.stringify(localState));
-
       this.markSyncTime();
     },
 

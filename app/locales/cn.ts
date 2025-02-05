@@ -784,6 +784,8 @@ const cn = {
     Import: "导入",
     Sync: "同步",
     Config: "配置",
+    SyncForce1: "同步(清空云端)",
+    SyncForce2: "同步(清空本地)",
   },
   Exporter: {
     Description: {
